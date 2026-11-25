@@ -96,6 +96,12 @@ var LiveApiParameter = /** @class */ (function (_super) {
             log.verbose("Setting value " + value + " for " + _this.name);
             _this.apiObject.set("value", value);
         };
+        // Requires a Live build with the is_crossfader_controlled LOM property: while set,
+        // Live draws this parameter's dial in a highlight color.
+        _this.setCrossfaderControlled = function (controlled) {
+            log.verbose("Setting is_crossfader_controlled " + controlled + " for " + _this.name);
+            _this.apiObject.set("is_crossfader_controlled", controlled ? 1 : 0);
+        };
         return _this;
     }
     LiveApiParameter.get = function (idOrPath) {

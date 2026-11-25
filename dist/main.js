@@ -27,6 +27,11 @@ function reset_all() {
 function cleanup() {
     instance.cleanup();
 }
+// Called by Max when the [js] object is freed, e.g. when the device is deleted
+function notifydeleted() {
+    if (instance)
+        instance.cleanup();
+}
 function popout() {
     instance.openPopout();
 }

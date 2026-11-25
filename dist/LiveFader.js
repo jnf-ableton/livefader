@@ -49,6 +49,9 @@ var LiveFader = /** @class */ (function () {
         this.currentFaderValue = 0;
         this.lastFaderValue = 0;
         this.cleanup = function () {
+            // Un-highlight every dial we highlighted, so nothing stays highlighted after
+            // the device is reloaded or deleted
+            _this.activeLockedParameters.forEach(function (activeLockedParameter) { var _a; return (_a = activeLockedParameter.trackedParameter) === null || _a === void 0 ? void 0 : _a.parameter.setCrossfaderControlled(false); });
             _this.liveParameterListener.removeListeners();
         };
         this.reset = function () {
@@ -197,13 +200,27 @@ var LiveFader = /** @class */ (function () {
             _this.log.verbose(activeLockedParametersObj);
             // Convert it to an array
             _this.activeLockedParameters = Object.keys(activeLockedParametersObj).map(function (k) { return activeLockedParametersObj[Number(k)]; });
+            // Highlight the dials of parameters newly controlled by the crossfader
+            var previousLockedParameterIds = {};
+            for (var _i = 0, previousLockedParmeters_1 = previousLockedParmeters; _i < previousLockedParmeters_1.length; _i++) {
+                var parameter = previousLockedParmeters_1[_i];
+                previousLockedParameterIds[parameter.trackedParameter.parameter.id] = true;
+            }
+            for (var _a = 0, _b = _this.activeLockedParameters; _a < _b.length; _a++) {
+                var parameter = _b[_a];
+                var trackedParameter = parameter.trackedParameter;
+                if (trackedParameter && !previousLockedParameterIds[trackedParameter.parameter.id]) {
+                    trackedParameter.parameter.setCrossfaderControlled(true);
+                }
+            }
             // Reset any parameters not in either scene to their last tracked value
             var lastState = _this.state;
             _this.setState(State.Crossfading);
-            for (var _i = 0, previousLockedParmeters_1 = previousLockedParmeters; _i < previousLockedParmeters_1.length; _i++) {
-                var parameter = previousLockedParmeters_1[_i];
+            for (var _c = 0, previousLockedParmeters_2 = previousLockedParmeters; _c < previousLockedParmeters_2.length; _c++) {
+                var parameter = previousLockedParmeters_2[_c];
                 if (!activeLockedParametersObj[parameter.trackedParameter.parameter.id]) {
                     parameter.trackedParameter.resetToLastUserValue();
+                    parameter.trackedParameter.parameter.setCrossfaderControlled(false);
                 }
             }
             _this.setState(lastState);

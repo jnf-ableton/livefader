@@ -89,6 +89,12 @@ export class LiveFader {
   }
 
   cleanup = () => {
+    // Un-highlight every dial we highlighted, so nothing stays highlighted after
+    // the device is reloaded or deleted
+    this.activeLockedParameters.forEach((activeLockedParameter) =>
+      activeLockedParameter.trackedParameter?.parameter.setCrossfaderControlled(false)
+    );
+
     this.liveParameterListener.removeListeners();
   };
 
@@ -289,6 +295,19 @@ export class LiveFader {
       (k) => activeLockedParametersObj[Number(k)]
     );
 
+    // Highlight the dials of parameters newly controlled by the crossfader
+    const previousLockedParameterIds: Record<number, boolean> = {};
+    for (let parameter of previousLockedParmeters) {
+      previousLockedParameterIds[parameter.trackedParameter.parameter.id] = true;
+    }
+
+    for (let parameter of this.activeLockedParameters) {
+      const trackedParameter = parameter.trackedParameter;
+      if (trackedParameter && !previousLockedParameterIds[trackedParameter.parameter.id]) {
+        trackedParameter.parameter.setCrossfaderControlled(true);
+      }
+    }
+
     // Reset any parameters not in either scene to their last tracked value
     const lastState = this.state;
     this.setState(State.Crossfading);
@@ -296,6 +315,7 @@ export class LiveFader {
     for (let parameter of previousLockedParmeters) {
       if (!activeLockedParametersObj[parameter.trackedParameter.parameter.id]) {
         parameter.trackedParameter.resetToLastUserValue();
+        parameter.trackedParameter.parameter.setCrossfaderControlled(false);
       }
     }
 
