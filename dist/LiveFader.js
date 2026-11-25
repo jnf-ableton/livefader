@@ -11,6 +11,26 @@ var lib_math_1 = require("./lib_math");
 var LiveParameterListener_1 = require("./LiveParameterListener");
 var models_1 = require("./models");
 var CHAR_CODE_A = 65;
+// One distinct color per scene (A to H), as 0xRRGGBB. Parameters controlled by a scene
+// are drawn in its color in Live.
+var SCENE_COLORS = [
+    0xff4040,
+    0x3fa9f5,
+    0x52d46a,
+    0xffd93d,
+    0xb76bff,
+    0xff8a2b,
+    0x2fe0d2,
+    0xff6fcf, // H pink
+];
+// Sends "<prefix...> activebgoncolor r g b a" to an outlet: Max wants colors as floats
+// between 0 and 1
+var outletButtonColor = function (outletIndex, prefix, rgb) {
+    var r = ((rgb >> 16) & 0xff) / 255;
+    var g = ((rgb >> 8) & 0xff) / 255;
+    var b = (rgb & 0xff) / 255;
+    outlet(outletIndex, prefix.concat(["activebgoncolor", r, g, b, 1]));
+};
 exports.Inlets = {
     LeftButton: { index: 0, description: "Left Button" },
     RightButton: { index: 1, description: "Right Button" },
@@ -45,6 +65,9 @@ var LiveFader = /** @class */ (function () {
         // the last value the user set it to so we know what value to return to
         this.trackedParametersById = {};
         this.liveParameterListener = new LiveParameterListener_1.LiveParameterListener();
+        // The color last sent to Live for each crossfader controlled parameter, so we only
+        // send changes
+        this.crossfaderControlledColorsById = {};
         this.currentMappingScene = undefined;
         this.currentFaderValue = 0;
         this.lastFaderValue = 0;
@@ -52,6 +75,7 @@ var LiveFader = /** @class */ (function () {
             // Un-highlight every dial we highlighted, so nothing stays highlighted after
             // the device is reloaded or deleted
             _this.activeLockedParameters.forEach(function (activeLockedParameter) { var _a; return (_a = activeLockedParameter.trackedParameter) === null || _a === void 0 ? void 0 : _a.parameter.setCrossfaderControlled(false); });
+            _this.crossfaderControlledColorsById = {};
             _this.liveParameterListener.removeListeners();
         };
         this.reset = function () {
@@ -112,6 +136,26 @@ var LiveFader = /** @class */ (function () {
                 activeLockedParameter.trackedParameter.parameter.setValue(newValue);
             });
             _this.setState(previousState);
+            // Parameters controlled by both scenes change color when the fader crosses the middle
+            _this.updateCrossfaderControlledColors();
+        };
+        // Each controlled parameter takes the color of the scene controlling it. If both active
+        // scenes control it, it takes the color of the side the crossfader is closer to.
+        this.updateCrossfaderControlledColors = function () {
+            var closerSide = _this.currentFaderValue <= 0.5 ? 0 : 1;
+            _this.activeLockedParameters.forEach(function (activeLockedParameter) {
+                var trackedParameter = activeLockedParameter.trackedParameter;
+                if (!trackedParameter)
+                    return;
+                var _a = activeLockedParameter.lockedParameters, left = _a[0], right = _a[1];
+                var side = left && right ? closerSide : left ? 0 : 1;
+                var color = SCENE_COLORS[_this.activeSceneIndices[side]];
+                var parameter = trackedParameter.parameter;
+                if (_this.crossfaderControlledColorsById[parameter.id] !== color) {
+                    parameter.setCrossfaderControlledColor(color);
+                    _this.crossfaderControlledColorsById[parameter.id] = color;
+                }
+            });
         };
         this.handleFaderButton = function (inlet, value) {
             if (value === 0) {
@@ -206,6 +250,8 @@ var LiveFader = /** @class */ (function () {
                 var parameter = previousLockedParmeters_1[_i];
                 previousLockedParameterIds[parameter.trackedParameter.parameter.id] = true;
             }
+            // Set the colors first, so dials don't briefly show the default color
+            _this.updateCrossfaderControlledColors();
             for (var _a = 0, _b = _this.activeLockedParameters; _a < _b.length; _a++) {
                 var parameter = _b[_a];
                 var trackedParameter = parameter.trackedParameter;
@@ -221,6 +267,7 @@ var LiveFader = /** @class */ (function () {
                 if (!activeLockedParametersObj[parameter.trackedParameter.parameter.id]) {
                     parameter.trackedParameter.resetToLastUserValue();
                     parameter.trackedParameter.parameter.setCrossfaderControlled(false);
+                    delete _this.crossfaderControlledColorsById[parameter.trackedParameter.parameter.id];
                 }
             }
             _this.setState(lastState);
@@ -228,6 +275,9 @@ var LiveFader = /** @class */ (function () {
         this.updateUI = function () {
             outlet(exports.Outlets.LeftText.index, "set", _this.activeScenes[0].getDescription());
             outlet(exports.Outlets.RightText.index, "set", _this.activeScenes[1].getDescription());
+            // The left and right buttons show the color of their active scene
+            outletButtonColor(exports.Outlets.LeftButton.index, [], SCENE_COLORS[_this.activeSceneIndices[0]]);
+            outletButtonColor(exports.Outlets.RightButton.index, [], SCENE_COLORS[_this.activeSceneIndices[1]]);
             _this.setAllSceneButtonsOff();
             if (_this.activeSceneButtonIndex !== undefined)
                 _this.setSceneButton(_this.activeSceneIndices[_this.activeSceneButtonIndex], true);
@@ -264,6 +314,11 @@ var LiveFader = /** @class */ (function () {
             for (var i = 0; i < 8; i++)
                 _this.setSceneButton(i, false);
         };
+        this.setSceneButtonColors = function () {
+            SCENE_COLORS.forEach(function (color, sceneIndex) {
+                return outletButtonColor(exports.Outlets.SceneButtons.index, [sceneIndex], color);
+            });
+        };
         this.getSavedState = function () {
             var state = {
                 scenes: _this.scenes.map(function (scene) { return ({
@@ -292,12 +347,14 @@ var LiveFader = /** @class */ (function () {
                 _this.scenes[parsed.activeSceneIndices[0]],
                 _this.scenes[parsed.activeSceneIndices[1]],
             ];
+            _this.activeSceneIndices = [parsed.activeSceneIndices[0], parsed.activeSceneIndices[1]];
             _this.initialiseTrackedParameters();
             _this.updateActiveLockedParameters();
             _this.updateUI();
         };
         lib_Log_1.log("LiveFader started");
         this.reset();
+        this.setSceneButtonColors();
         this.liveParameterListener.onActiveParameterValueChanged =
             this.handleActiveParameterValueChanged;
         // Handle crossfader input at 30fps rather than continuosly to help with performance

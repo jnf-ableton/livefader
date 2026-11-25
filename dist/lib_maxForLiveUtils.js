@@ -102,6 +102,11 @@ var LiveApiParameter = /** @class */ (function (_super) {
             log.verbose("Setting is_crossfader_controlled " + controlled + " for " + _this.name);
             _this.apiObject.set("is_crossfader_controlled", controlled ? 1 : 0);
         };
+        // The color of this parameter's dial while it is crossfader controlled, as 0xRRGGBB
+        _this.setCrossfaderControlledColor = function (color) {
+            log.verbose("Setting crossfader_controlled_color " + color + " for " + _this.name);
+            _this.apiObject.set("crossfader_controlled_color", color);
+        };
         return _this;
     }
     LiveApiParameter.get = function (idOrPath) {

@@ -79,6 +79,13 @@ export class LiveApiParameter extends LiveApiObjectWrapper {
     this.apiObject.set("is_crossfader_controlled", controlled ? 1 : 0);
   };
 
+  // The color of this parameter's dial while it is crossfader controlled, as 0xRRGGBB
+  setCrossfaderControlledColor = (color: number) => {
+    log.verbose(`Setting crossfader_controlled_color ${color} for ${this.name}`);
+
+    this.apiObject.set("crossfader_controlled_color", color);
+  };
+
   get device() {
     if (this._device) return this._device;
 

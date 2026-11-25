@@ -12,6 +12,29 @@ import {
 
 const CHAR_CODE_A = 65;
 
+// One distinct color per scene (A to H), as 0xRRGGBB. Parameters controlled by a scene
+// are drawn in its color in Live.
+const SCENE_COLORS = [
+  0xff4040, // A red
+  0x3fa9f5, // B blue
+  0x52d46a, // C green
+  0xffd93d, // D yellow
+  0xb76bff, // E purple
+  0xff8a2b, // F orange
+  0x2fe0d2, // G cyan
+  0xff6fcf, // H pink
+];
+
+// Sends "<prefix...> activebgoncolor r g b a" to an outlet: Max wants colors as floats
+// between 0 and 1
+const outletButtonColor = (outletIndex: number, prefix: any[], rgb: number) => {
+  const r = ((rgb >> 16) & 0xff) / 255;
+  const g = ((rgb >> 8) & 0xff) / 255;
+  const b = (rgb & 0xff) / 255;
+
+  outlet(outletIndex, prefix.concat(["activebgoncolor", r, g, b, 1]));
+};
+
 interface InletOutlet {
   index: number;
   description: string;
@@ -67,6 +90,10 @@ export class LiveFader {
 
   liveParameterListener: LiveParameterListener = new LiveParameterListener();
 
+  // The color last sent to Live for each crossfader controlled parameter, so we only
+  // send changes
+  crossfaderControlledColorsById: Record<number, number> = {};
+
   currentMappingScene?: ParameterScene = undefined;
 
   currentFaderValue = 0;
@@ -78,6 +105,7 @@ export class LiveFader {
     log("LiveFader started");
 
     this.reset();
+    this.setSceneButtonColors();
 
     this.liveParameterListener.onActiveParameterValueChanged =
       this.handleActiveParameterValueChanged;
@@ -94,6 +122,7 @@ export class LiveFader {
     this.activeLockedParameters.forEach((activeLockedParameter) =>
       activeLockedParameter.trackedParameter?.parameter.setCrossfaderControlled(false)
     );
+    this.crossfaderControlledColorsById = {};
 
     this.liveParameterListener.removeListeners();
   };
@@ -171,6 +200,30 @@ export class LiveFader {
     });
 
     this.setState(previousState);
+
+    // Parameters controlled by both scenes change color when the fader crosses the middle
+    this.updateCrossfaderControlledColors();
+  };
+
+  // Each controlled parameter takes the color of the scene controlling it. If both active
+  // scenes control it, it takes the color of the side the crossfader is closer to.
+  updateCrossfaderControlledColors = () => {
+    const closerSide = this.currentFaderValue <= 0.5 ? 0 : 1;
+
+    this.activeLockedParameters.forEach((activeLockedParameter) => {
+      const trackedParameter = activeLockedParameter.trackedParameter;
+      if (!trackedParameter) return;
+
+      const [left, right] = activeLockedParameter.lockedParameters;
+      const side = left && right ? closerSide : left ? 0 : 1;
+      const color = SCENE_COLORS[this.activeSceneIndices[side]];
+      const parameter = trackedParameter.parameter;
+
+      if (this.crossfaderControlledColorsById[parameter.id] !== color) {
+        parameter.setCrossfaderControlledColor(color);
+        this.crossfaderControlledColorsById[parameter.id] = color;
+      }
+    });
   };
 
   handleFaderButton = (inlet: number, value: number) => {
@@ -301,6 +354,9 @@ export class LiveFader {
       previousLockedParameterIds[parameter.trackedParameter.parameter.id] = true;
     }
 
+    // Set the colors first, so dials don't briefly show the default color
+    this.updateCrossfaderControlledColors();
+
     for (let parameter of this.activeLockedParameters) {
       const trackedParameter = parameter.trackedParameter;
       if (trackedParameter && !previousLockedParameterIds[trackedParameter.parameter.id]) {
@@ -316,6 +372,7 @@ export class LiveFader {
       if (!activeLockedParametersObj[parameter.trackedParameter.parameter.id]) {
         parameter.trackedParameter.resetToLastUserValue();
         parameter.trackedParameter.parameter.setCrossfaderControlled(false);
+        delete this.crossfaderControlledColorsById[parameter.trackedParameter.parameter.id];
       }
     }
 
@@ -325,6 +382,10 @@ export class LiveFader {
   updateUI = () => {
     outlet(Outlets.LeftText.index, "set", this.activeScenes[0].getDescription());
     outlet(Outlets.RightText.index, "set", this.activeScenes[1].getDescription());
+
+    // The left and right buttons show the color of their active scene
+    outletButtonColor(Outlets.LeftButton.index, [], SCENE_COLORS[this.activeSceneIndices[0]]);
+    outletButtonColor(Outlets.RightButton.index, [], SCENE_COLORS[this.activeSceneIndices[1]]);
 
     this.setAllSceneButtonsOff();
     if (this.activeSceneButtonIndex !== undefined)
@@ -370,6 +431,12 @@ export class LiveFader {
     for (let i = 0; i < 8; i++) this.setSceneButton(i, false);
   };
 
+  setSceneButtonColors = () => {
+    SCENE_COLORS.forEach((color, sceneIndex) =>
+      outletButtonColor(Outlets.SceneButtons.index, [sceneIndex], color)
+    );
+  };
+
   getSavedState = () => {
     const state: SavedState = {
       scenes: this.scenes.map((scene) => ({
@@ -403,6 +470,7 @@ export class LiveFader {
       this.scenes[parsed.activeSceneIndices[0]],
       this.scenes[parsed.activeSceneIndices[1]],
     ];
+    this.activeSceneIndices = [parsed.activeSceneIndices[0], parsed.activeSceneIndices[1]];
 
     this.initialiseTrackedParameters();
     this.updateActiveLockedParameters();
