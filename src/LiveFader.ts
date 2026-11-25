@@ -386,6 +386,10 @@ export class LiveFader {
     // The left and right buttons show the color of their active scene
     outletButtonColor(Outlets.LeftButton.index, [], SCENE_COLORS[this.activeSceneIndices[0]]);
     outletButtonColor(Outlets.RightButton.index, [], SCENE_COLORS[this.activeSceneIndices[1]]);
+    outlet(Outlets.LeftButton.index, "text", this.activeScenes[0].name);
+    outlet(Outlets.LeftButton.index, "texton", this.activeScenes[0].name);
+    outlet(Outlets.RightButton.index, "text", this.activeScenes[1].name);
+    outlet(Outlets.RightButton.index, "texton", this.activeScenes[1].name);
 
     this.setAllSceneButtonsOff();
     if (this.activeSceneButtonIndex !== undefined)
